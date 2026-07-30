@@ -2,25 +2,44 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Build and run Arc Atlas",
+            "label": "Build Arc AtlaS",
             "type": "shell",
-            "command": "gcc src/*.c -Iinclude -o arc-atlas.exe && arc-atlas.exe",
+            "command": "gcc",
+            "args": [
+                "src/main.c",
+                "src/rover.c",
+                "-Iinclude",
+                "-o",
+                "arc-atlas.exe",
+                "-lm"
+            ],
             "options": {
-                "cwd": "${workspaceFolder}",
-                "shell": {
-                    "executable": "C:\\Windows\\System32\\cmd.exe",
-                    "args": ["/d", "/c"]
-                }
+                "cwd": "${workspaceFolder}"
             },
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "Run Arc AtlaS",
+            "type": "shell",
+            "command": ".\\arc-atlas.exe",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Build and Run Arc AtlaS",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "Build Arc AtlaS",
+                "Run Arc AtlaS"
+            ],
+            "problemMatcher": [],
             "group": {
                 "kind": "build",
                 "isDefault": true
-            },
-            "problemMatcher": ["$gcc"],
-            "presentation": {
-                "reveal": "always",
-                "panel": "shared",
-                "clear": true
             }
         }
     ]
