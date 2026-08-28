@@ -10,16 +10,19 @@ WIDTH = 1000
 HEIGHT = 1000
 PIXELS_PER_METER = 100
 
-SIM_DT = 0.2
+SIM_DT = 0.05
+REFERENCE_SIM_DT = 0.01
 
 V_R = 4.0
 V_L = 2.0
 L = 1.0
+V_C = (V_R + V_L) / 2
+OMEGA = (V_R - V_L) / L
 
 TARGET_FPS = 60
 
-# How often a historical rover pose is saved.
-SHADOW_INTERVAL = SIM_DT * 10
+# How often a historical rover pose is saved
+SHADOW_INTERVAL = 0.5
 
 # Prevent history from consuming unlimited memory
 MAX_PATH_POINTS = 10000
@@ -46,7 +49,6 @@ def world_to_screen(
 
     return int(screen_x), int(screen_y)
 
-
 def rotate_point(
     x: float,
     y: float,
@@ -64,7 +66,22 @@ def rotate_point(
 
     return rotated_x, rotated_y
 
+def exact_position(t, x0, y0, theta0, v_C, omega):
+    x_exact = x0 + (v_C/omega)*(math.sin(theta0 + omega*t) - math.sin(theta0))
+    y_exact = y0 - (v_C/omega)*(math.cos(theta0 + omega*t) - math.cos(theta0))
+    return x_exact, y_exact
 
+def position_error(x_exact, y_exact, x_state, y_state):
+    x_error = x_state - x_exact
+    y_error = y_state - y_exact
+
+    pos_error = math.sqrt(
+        x_error * x_error +
+        y_error * y_error
+    )
+
+    return x_error, y_error, pos_error
+    
 def rover_polygon(
     x: float,
     y: float,
@@ -101,12 +118,12 @@ def rover_polygon(
 
     return screen_points
 
-
 def draw_path(
     screen: pygame.Surface,
     path_history: deque,
     camera_x: float,
     camera_y: float,
+    color,
 ) -> None:
     if len(path_history) < 2:
         return
@@ -118,7 +135,7 @@ def draw_path(
 
     pygame.draw.lines(
         screen,
-        (90, 170, 255),
+        color,
         False,
         screen_points,
         3,
@@ -131,7 +148,7 @@ def draw_shadows(
     camera_x: float,
     camera_y: float,
 ) -> None:
-    # Separate transparent drawing surface.
+    # Separate transparent drawing surface
     shadow_surface = pygame.Surface(
         (WIDTH, HEIGHT),
         pygame.SRCALPHA,
@@ -140,7 +157,7 @@ def draw_shadows(
     number_of_shadows = len(shadow_history)
 
     for index, (x, y, theta) in enumerate(shadow_history):
-        # Older poses are dimmer; newer poses are brighter.
+        # Older poses are dimmer; newer poses are brighter
         age_fraction = (
             (index + 1) / number_of_shadows
             if number_of_shadows > 0
@@ -229,6 +246,10 @@ def reset_simulation():
         maxlen=MAX_PATH_POINTS,
     )
 
+    reference_history = deque(
+        [(initial_state.x, initial_state.y)],
+        maxlen=MAX_PATH_POINTS,
+    )
     shadow_history = deque(
         [
             (
@@ -240,7 +261,7 @@ def reset_simulation():
         maxlen=MAX_SHADOWS,
     )
 
-    return initial_state, path_history, shadow_history
+    return initial_state, path_history, reference_history, shadow_history
 
 
 pygame.init()
@@ -251,7 +272,7 @@ pygame.display.set_caption("Arc Atlas")
 clock = pygame.time.Clock()
 font = pygame.font.SysFont(None, 28)
 
-state, path_history, shadow_history = reset_simulation()
+state, path_history, reference_history, shadow_history = reset_simulation()
 
 camera_x = state.x
 camera_y = state.y
@@ -261,6 +282,12 @@ display_mode = "path"
 
 accumulator = 0.0
 shadow_timer = 0.0
+sim_time = 0.0
+
+x_error = 0.0
+y_error = 0.0
+pos_error = 0.0
+pos_error_max = 0.0
 
 running = True
 
@@ -268,7 +295,7 @@ while running:
     frame_time = clock.tick(TARGET_FPS) / 1000.0
 
     # Prevent an enormous catch-up loop after pausing,
-    # dragging the window, or hitting a breakpoint.
+    # dragging the window, or hitting a breakpoint
     frame_time = min(frame_time, 0.25)
 
     accumulator += frame_time
@@ -290,11 +317,13 @@ while running:
             elif event.key == pygame.K_c:
                 path_history.clear()
                 shadow_history.clear()
+                reference_history.clear()
 
             elif event.key == pygame.K_r:
                 (
                     state,
                     path_history,
+                    reference_history,
                     shadow_history,
                 ) = reset_simulation()
 
@@ -303,19 +332,48 @@ while running:
 
                 accumulator = 0.0
                 shadow_timer = 0.0
+                sim_time = 0.0
+
+                x_error = 0.0
+                y_error = 0.0
+                pos_error = 0.0
+                pos_error_max = 0.0
 
     while accumulator >= SIM_DT:
-        # C performs every physical calculation.
+        # C performs every physical calculation
         rover.rover_step(V_R, V_L, SIM_DT)
+        sim_time += SIM_DT
 
         state = rover.rover_get_state()
 
-        # Record the C-calculated centre position.
+        # Record the C-calculated centre position
         path_history.append(
             (state.x, state.y)
         )
 
-        # Save rover poses less frequently than path points.
+        exact_x, exact_y = exact_position(
+            sim_time,
+            0.0,
+            0.0,
+            0.0,
+            V_C,
+            OMEGA
+        )
+
+        reference_history.append(
+            (exact_x, exact_y)
+        )
+
+        x_error, y_error, pos_error = position_error(
+            exact_x,
+            exact_y,
+            state.x,
+            state.y
+        )
+
+        pos_error_max = max(pos_error, pos_error_max)
+
+        # Save rover poses less frequently than path points
         shadow_timer += SIM_DT
 
         if shadow_timer >= SHADOW_INTERVAL:
@@ -331,8 +389,8 @@ while running:
 
         accumulator -= SIM_DT
 
-    # Smooth visual camera following.
-    # This changes only the viewpoint, never the rover.
+    # Smooth visual camera following
+    # This changes only the viewpoint, never the rover
     if camera_follow:
         follow_amount = min(
             1.0,
@@ -357,6 +415,15 @@ while running:
             path_history,
             camera_x,
             camera_y,
+            (90, 170, 255),
+        )
+
+        draw_path(
+            screen,
+            reference_history,
+            camera_x,
+            camera_y,
+            (255, 150, 100),
         )
     else:
         draw_shadows(
@@ -380,20 +447,33 @@ while running:
         current_rover_points,
     )
 
-    info_lines = [
+    technical_lines = [
+        "SIMULATION",
         f"Mode: {display_mode}",
+        f"Time: {sim_time:.2f} s",
+        f"dt: {SIM_DT:.3f} s",
+        "",
+        "STATE",
         f"x: {state.x:.3f} m",
         f"y: {state.y:.3f} m",
         f"theta: {state.theta:.3f} rad",
-        f"SIM_DT: {SIM_DT:.3f} s",
-        f"Camera follow: {camera_follow}",
-        "TAB: path/shadows",
-        "F: camera follow",
-        "C: clear history",
-        "R: reset simulation",
+        "",
+        "ERROR",
+        f"X error: {x_error:+.4f} m",
+        f"Y error: {y_error:+.4f} m",
+        f"Position error: {pos_error:.4f} m",
+        f"Maximum Position error: {pos_error_max:.4f} m",
     ]
 
-    for index, line in enumerate(info_lines):
+    control_lines = [
+        "CONTROLS",
+        "TAB  Path / Shadows",
+        f"F    Camera follow ({camera_follow})",
+        "C    Clear history",
+        "R    Reset simulation",
+    ]
+
+    for index, line in enumerate(technical_lines):
         text_surface = font.render(
             line,
             True,
@@ -403,6 +483,18 @@ while running:
         screen.blit(
             text_surface,
             (20, 20 + index * 27),
+        )
+
+    for index, line in enumerate(control_lines):
+        text_surface = font.render(
+            line,
+            True,
+            (225, 225, 230),
+        )
+
+        screen.blit(
+            text_surface,
+            (WIDTH - 260, 20 + index * 27),
         )
 
     pygame.display.flip()
