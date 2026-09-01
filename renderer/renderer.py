@@ -10,8 +10,8 @@ WIDTH = 1000
 HEIGHT = 1000
 PIXELS_PER_METER = 100
 
-SIM_DT = 0.05
-REFERENCE_SIM_DT = 0.01
+SIM_DT = 0.5
+REFERENCE_SIM_DT = 0.2
 
 V_R = 4.0
 V_L = 2.0
@@ -459,10 +459,10 @@ while running:
         f"theta: {state.theta:.3f} rad",
         "",
         "ERROR",
-        f"X error: {x_error:+.4f} m",
-        f"Y error: {y_error:+.4f} m",
-        f"Position error: {pos_error:.4f} m",
-        f"Maximum Position error: {pos_error_max:.4f} m",
+        f"X error: {x_error:+.3e} m",
+        f"Y error: {y_error:+.3e} m",
+        f"Position error: {pos_error:.3e} m",
+        f"Maximum Position error: {pos_error_max:.3e} m",
     ]
 
     control_lines = [

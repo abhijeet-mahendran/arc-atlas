@@ -2,44 +2,27 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Build Arc AtlaS",
+            "label": "Build Rover DLL",
             "type": "shell",
             "command": "gcc",
             "args": [
-                "src/main.c",
-                "src/rover.c",
+                "-shared",
                 "-Iinclude",
+                "src/rover.c",
+                "src/integrator.c",
                 "-o",
-                "arc-atlas.exe",
+                "rover.dll",
                 "-lm"
             ],
-            "options": {
-                "cwd": "${workspaceFolder}"
-            },
-            "problemMatcher": [
-                "$gcc"
-            ]
-        },
-        {
-            "label": "Run Arc AtlaS",
-            "type": "shell",
-            "command": ".\\arc-atlas.exe",
-            "options": {
-                "cwd": "${workspaceFolder}"
-            },
-            "problemMatcher": []
-        },
-        {
-            "label": "Build and Run Arc AtlaS",
-            "dependsOrder": "sequence",
-            "dependsOn": [
-                "Build Arc AtlaS",
-                "Run Arc AtlaS"
-            ],
-            "problemMatcher": [],
             "group": {
                 "kind": "build",
                 "isDefault": true
+            },
+            "problemMatcher": ["$gcc"],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
             }
         }
     ]
