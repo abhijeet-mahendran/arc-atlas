@@ -20,7 +20,6 @@ rover.rover_init.argtypes = [  # init rover, inputs: L
 ]
 rover.rover_init.restype = None
 
-
 rover.rover_step.argtypes = [ # calculate step, inputs: v_R, v_L, dt
     ctypes.c_double,
     ctypes.c_double,
@@ -31,3 +30,9 @@ rover.rover_step.restype = None
 
 rover.rover_get_state.argtypes = [] # get rover state       
 rover.rover_get_state.restype = RoverState 
+
+rover.rover_set_integration_method.argtypes = [ # set integration method
+    ctypes.c_int
+]
+
+rover.rover_set_integration_method.restype = None

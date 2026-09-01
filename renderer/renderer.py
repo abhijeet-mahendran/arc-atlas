@@ -10,14 +10,47 @@ WIDTH = 1000
 HEIGHT = 1000
 PIXELS_PER_METER = 100
 
+# Active simulation settings
 SIM_DT = 0.5
-REFERENCE_SIM_DT = 0.2
 
 V_R = 4.0
-V_L = 2.0
+V_L = 4.0
 L = 1.0
+
+# Must match the C enum order:
+# EULER_FORWARD, EULER_BACKWARD, MIDPOINT_RK2, RK4
+INTEGRATOR = 0
+
 V_C = (V_R + V_L) / 2
 OMEGA = (V_R - V_L) / L
+
+INTEGRATOR_NAMES = [
+    "Forward Euler",
+    "Backward Euler",
+    "Midpoint RK2",
+    "RK4",
+]
+
+DT_OPTIONS = [
+    0.001,
+    0.002,
+    0.005,
+    0.01,
+    0.02,
+    0.05,
+    0.1,
+    0.2,
+    0.5,
+    1.0,
+]
+
+SETTINGS_FIELDS = [
+    "dt",
+    "integrator",
+    "L",
+    "v_R",
+    "v_L",
+]
 
 TARGET_FPS = 60
 
@@ -49,6 +82,7 @@ def world_to_screen(
 
     return int(screen_x), int(screen_y)
 
+
 def rotate_point(
     x: float,
     y: float,
@@ -66,22 +100,87 @@ def rotate_point(
 
     return rotated_x, rotated_y
 
+
 def exact_position(t, x0, y0, theta0, v_C, omega):
-    x_exact = x0 + (v_C/omega)*(math.sin(theta0 + omega*t) - math.sin(theta0))
-    y_exact = y0 - (v_C/omega)*(math.cos(theta0 + omega*t) - math.cos(theta0))
+    if abs(omega) < 1e-12:
+        x_exact = x0 + v_C * math.cos(theta0) * t
+        y_exact = y0 + v_C * math.sin(theta0) * t
+    else:
+        x_exact = (
+            x0
+            + (v_C / omega)
+            * (
+                math.sin(theta0 + omega * t)
+                - math.sin(theta0)
+            )
+        )
+
+        y_exact = (
+            y0
+            - (v_C / omega)
+            * (
+                math.cos(theta0 + omega * t)
+                - math.cos(theta0)
+            )
+        )
+
     return x_exact, y_exact
+
 
 def position_error(x_exact, y_exact, x_state, y_state):
     x_error = x_state - x_exact
     y_error = y_state - y_exact
 
     pos_error = math.sqrt(
-        x_error * x_error +
-        y_error * y_error
+        x_error * x_error
+        + y_error * y_error
     )
 
     return x_error, y_error, pos_error
-    
+
+
+def change_setting(pending, field, direction):
+    if field == "dt":
+        current_index = DT_OPTIONS.index(pending["dt"])
+
+        new_index = max(
+            0,
+            min(
+                len(DT_OPTIONS) - 1,
+                current_index + direction,
+            ),
+        )
+
+        pending["dt"] = DT_OPTIONS[new_index]
+
+    elif field == "integrator":
+        pending["integrator"] = (
+            pending["integrator"] + direction
+        ) % len(INTEGRATOR_NAMES)
+
+    elif field == "L":
+        pending["L"] = max(
+            0.1,
+            round(pending["L"] + 0.1 * direction, 10),
+        )
+
+    elif field == "v_R":
+        pending["v_R"] += 0.5 * direction
+
+    elif field == "v_L":
+        pending["v_L"] += 0.5 * direction
+
+
+def settings_have_changes(pending):
+    return (
+        pending["dt"] != SIM_DT
+        or pending["integrator"] != INTEGRATOR
+        or pending["L"] != L
+        or pending["v_R"] != V_R
+        or pending["v_L"] != V_L
+    )
+
+
 def rover_polygon(
     x: float,
     y: float,
@@ -117,6 +216,7 @@ def rover_polygon(
         )
 
     return screen_points
+
 
 def draw_path(
     screen: pygame.Surface,
@@ -238,6 +338,7 @@ def draw_grid(
 
 def reset_simulation():
     rover.rover_init(L)
+    rover.rover_set_integration_method(INTEGRATOR)
 
     initial_state = rover.rover_get_state()
 
@@ -250,6 +351,7 @@ def reset_simulation():
         [(initial_state.x, initial_state.y)],
         maxlen=MAX_PATH_POINTS,
     )
+
     shadow_history = deque(
         [
             (
@@ -261,7 +363,12 @@ def reset_simulation():
         maxlen=MAX_SHADOWS,
     )
 
-    return initial_state, path_history, reference_history, shadow_history
+    return (
+        initial_state,
+        path_history,
+        reference_history,
+        shadow_history,
+    )
 
 
 pygame.init()
@@ -279,6 +386,17 @@ camera_y = state.y
 
 camera_follow = True
 display_mode = "path"
+
+settings_open = False
+settings_index = 0
+
+pending = {
+    "dt": SIM_DT,
+    "integrator": INTEGRATOR,
+    "L": L,
+    "v_R": V_R,
+    "v_L": V_L,
+}
 
 accumulator = 0.0
 shadow_timer = 0.0
@@ -305,7 +423,34 @@ while running:
             running = False
 
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_TAB:
+            if event.key == pygame.K_s:
+                settings_open = not settings_open
+
+            elif settings_open and event.key == pygame.K_UP:
+                settings_index = (
+                    settings_index - 1
+                ) % len(SETTINGS_FIELDS)
+
+            elif settings_open and event.key == pygame.K_DOWN:
+                settings_index = (
+                    settings_index + 1
+                ) % len(SETTINGS_FIELDS)
+
+            elif settings_open and event.key == pygame.K_LEFT:
+                change_setting(
+                    pending,
+                    SETTINGS_FIELDS[settings_index],
+                    -1,
+                )
+
+            elif settings_open and event.key == pygame.K_RIGHT:
+                change_setting(
+                    pending,
+                    SETTINGS_FIELDS[settings_index],
+                    +1,
+                )
+
+            elif event.key == pygame.K_TAB:
                 if display_mode == "path":
                     display_mode = "shadows"
                 else:
@@ -320,6 +465,16 @@ while running:
                 reference_history.clear()
 
             elif event.key == pygame.K_r:
+                # Pending settings become active only on reset.
+                SIM_DT = pending["dt"]
+                INTEGRATOR = pending["integrator"]
+                L = pending["L"]
+                V_R = pending["v_R"]
+                V_L = pending["v_L"]
+
+                V_C = (V_R + V_L) / 2
+                OMEGA = (V_R - V_L) / L
+
                 (
                     state,
                     path_history,
@@ -340,13 +495,13 @@ while running:
                 pos_error_max = 0.0
 
     while accumulator >= SIM_DT:
-        # C performs every physical calculation
+        # C performs every physical calculation.
         rover.rover_step(V_R, V_L, SIM_DT)
         sim_time += SIM_DT
 
         state = rover.rover_get_state()
 
-        # Record the C-calculated centre position
+        # Record the C-calculated centre position.
         path_history.append(
             (state.x, state.y)
         )
@@ -357,7 +512,7 @@ while running:
             0.0,
             0.0,
             V_C,
-            OMEGA
+            OMEGA,
         )
 
         reference_history.append(
@@ -368,12 +523,15 @@ while running:
             exact_x,
             exact_y,
             state.x,
-            state.y
+            state.y,
         )
 
-        pos_error_max = max(pos_error, pos_error_max)
+        pos_error_max = max(
+            pos_error,
+            pos_error_max,
+        )
 
-        # Save rover poses less frequently than path points
+        # Save rover poses less frequently than path points.
         shadow_timer += SIM_DT
 
         if shadow_timer >= SHADOW_INTERVAL:
@@ -389,8 +547,8 @@ while running:
 
         accumulator -= SIM_DT
 
-    # Smooth visual camera following
-    # This changes only the viewpoint, never the rover
+    # Smooth visual camera following.
+    # This changes only the viewpoint, never the rover.
     if camera_follow:
         follow_amount = min(
             1.0,
@@ -447,9 +605,12 @@ while running:
         current_rover_points,
     )
 
+    changes_pending = settings_have_changes(pending)
+
     technical_lines = [
         "SIMULATION",
         f"Mode: {display_mode}",
+        f"Integrator: {INTEGRATOR_NAMES[INTEGRATOR]}",
         f"Time: {sim_time:.2f} s",
         f"dt: {SIM_DT:.3f} s",
         "",
@@ -462,15 +623,22 @@ while running:
         f"X error: {x_error:+.3e} m",
         f"Y error: {y_error:+.3e} m",
         f"Position error: {pos_error:.3e} m",
-        f"Maximum Position error: {pos_error_max:.3e} m",
+        f"Max position error: {pos_error_max:.3e} m",
     ]
+
+    if changes_pending:
+        technical_lines += [
+            "",
+            "PENDING CHANGES - press R to apply",
+        ]
 
     control_lines = [
         "CONTROLS",
+        "S    Settings",
         "TAB  Path / Shadows",
         f"F    Camera follow ({camera_follow})",
         "C    Clear history",
-        "R    Reset simulation",
+        "R    Apply settings + Reset",
     ]
 
     for index, line in enumerate(technical_lines):
@@ -494,8 +662,80 @@ while running:
 
         screen.blit(
             text_surface,
-            (WIDTH - 260, 20 + index * 27),
+            (WIDTH - 290, 20 + index * 27),
         )
+
+    if settings_open:
+        setting_values = [
+            f"dt:             {pending['dt']:.3f} s",
+            (
+                "Integrator:     "
+                f"{INTEGRATOR_NAMES[pending['integrator']]}"
+            ),
+            f"Track width L:  {pending['L']:.2f} m",
+            f"Right wheel:    {pending['v_R']:.2f} m/s",
+            f"Left wheel:     {pending['v_L']:.2f} m/s",
+        ]
+
+        settings_lines = [
+            "SETTINGS - changes apply on reset",
+            "",
+        ]
+
+        for index, value in enumerate(setting_values):
+            marker = ">" if index == settings_index else " "
+            settings_lines.append(
+                f"{marker} {value}"
+            )
+
+        settings_lines += [
+            "",
+            "UP / DOWN     select",
+            "LEFT / RIGHT  change",
+            "R             apply + reset",
+            "S             close",
+        ]
+
+        panel_height = len(settings_lines) * 27 + 25
+        panel_y = HEIGHT - panel_height - 15
+
+        pygame.draw.rect(
+            screen,
+            (18, 18, 22),
+            (
+                15,
+                panel_y,
+                455,
+                panel_height,
+            ),
+        )
+
+        pygame.draw.rect(
+            screen,
+            (90, 90, 100),
+            (
+                15,
+                panel_y,
+                455,
+                panel_height,
+            ),
+            1,
+        )
+
+        for index, line in enumerate(settings_lines):
+            text_surface = font.render(
+                line,
+                True,
+                (225, 225, 230),
+            )
+
+            screen.blit(
+                text_surface,
+                (
+                    30,
+                    panel_y + 12 + index * 27,
+                ),
+            )
 
     pygame.display.flip()
 
