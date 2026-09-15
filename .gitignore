@@ -53,3 +53,34 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# =========================
+# Unity generated files
+# =========================
+
+**/[Ll]ibrary/
+**/[Tt]emp/
+**/[Oo]bj/
+**/[Ll]ogs/
+**/[Uu]ser[Ss]ettings/
+
+**/[Mm]emoryCaptures/
+**/[Rr]ecordings/
+
+# Unity build outputs
+**/[Bb]uild/
+**/[Bb]uilds/
+
+# IDE-generated Unity files
+*.csproj
+*.sln
+*.suo
+*.user
+*.userprefs
+
+.vs/
+.idea/
+
+# OS junk
+.DS_Store
+Thumbs.db

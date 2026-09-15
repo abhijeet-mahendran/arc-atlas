@@ -21,6 +21,8 @@ ROVER_API void rover_step(
 
 ROVER_API RoverState rover_get_state(void);
 
+ROVER_API void rover_get_state_into(RoverState *out_state);
+
 ROVER_API void rover_set_integration_method(IntegrationMethod method);
 
 #endif
