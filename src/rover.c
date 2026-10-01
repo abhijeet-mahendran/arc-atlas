@@ -38,11 +38,6 @@ RoverState rover_get_state(void)
     return rover;
 }
 
-void rover_get_state_into(RoverState *out_state)
-{
-    *out_state = rover;
-}
-
 void rover_set_integration_method(IntegrationMethod new_method)
 {
     integrator_set_method(new_method);
